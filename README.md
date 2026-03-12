@@ -112,13 +112,13 @@ pytest tests/ -v
 
   SECURITY VERIFICATION RESULTS
   -----------------------------------------------------------------
-  [SCENARIO 1] Internet→EC2 SSH     : SAT   ⚠️  VULNERABLE
-  [SCENARIO 1] Internet→EC2 HTTP    : SAT   ⚠️  VULNERABLE
-  [SCENARIO 2] Bypass ALB           : UNSAT ✅  SAFE
-  [SCENARIO 3] Subnet Isolation     : UNSAT ✅  SAFE
-  [SCENARIO 4] Unrestricted Egress  : SAT   ⚠️  VULNERABLE
-  [SCENARIO 5] After Fix - SSH      : UNSAT ✅  SAFE
-  [SCENARIO 5] After Fix - Egress   : UNSAT ✅  SAFE
+  [SCENARIO 1] Internet→EC2 SSH     : SAT   VULNERABLE
+  [SCENARIO 1] Internet→EC2 HTTP    : SAT   VULNERABLE
+  [SCENARIO 2] Bypass ALB           : UNSAT SAFE
+  [SCENARIO 3] Subnet Isolation     : UNSAT SAFE
+  [SCENARIO 4] Unrestricted Egress  : SAT   VULNERABLE
+  [SCENARIO 5] After Fix - SSH      : UNSAT SAFE
+  [SCENARIO 5] After Fix - Egress   : UNSAT SAFE
   -----------------------------------------------------------------
 
   Summary: 3 VULNERABLE  |  4 SAFE
@@ -155,11 +155,11 @@ port ∈ [from, to]  ⟺  from ≤ port ≤ to
 
 | # | Check | Baseline | After Fix |
 |---|---|---|---|
-| 1 | Internet → EC2 SSH (port 22) | SAT ⚠️ | UNSAT ✅ |
-| 1 | Internet → EC2 HTTP (port 80) | SAT ⚠️ | — |
-| 2 | Direct access bypassing ALB | UNSAT ✅ | — |
-| 3 | sub1 / sub2 CIDR overlap | UNSAT ✅ | — |
-| 4 | Unrestricted egress / exfil | SAT ⚠️ | UNSAT ✅ |
+| 1 | Internet → EC2 SSH (port 22) | SAT | UNSAT |
+| 1 | Internet → EC2 HTTP (port 80) | SAT | — |
+| 2 | Direct access bypassing ALB | UNSAT | — |
+| 3 | sub1 / sub2 CIDR overlap | UNSAT | — |
+| 4 | Unrestricted egress / exfil | SAT | UNSAT |
 
 ### Recommended Fixes
 
