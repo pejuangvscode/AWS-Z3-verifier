@@ -62,6 +62,7 @@ from z3_engine.models import ip_in_subnet, port_in_range
 # the security team applies the recommended fixes.
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Definisi IP internal sesuai source code (main.tf)
 _VPC_CIDR = "10.0.0.0/16"
 _SUBNET1_CIDR = "10.0.0.0/24"
 
@@ -182,13 +183,13 @@ def run_fixed_egress_check() -> tuple[str, ModelRef | None]:
 
 if __name__ == "__main__":
     _r_ssh, _m_ssh = run_fixed_ssh_check()
-    _v_ssh = "⚠️  VULNERABLE" if _r_ssh == "SAT" else "✅  SAFE"
+    _v_ssh = "VULNERABLE" if _r_ssh == "SAT" else "SAFE"
     print(f"[SCENARIO 5] After Fix - SSH    : {_r_ssh:<5} {_v_ssh}")
     if _m_ssh:
         print(f"  Counterexample: {_m_ssh}")
 
     _r_egr, _m_egr = run_fixed_egress_check()
-    _v_egr = "⚠️  VULNERABLE" if _r_egr == "SAT" else "✅  SAFE"
+    _v_egr = "VULNERABLE" if _r_egr == "SAT" else "SAFE"
     print(f"[SCENARIO 5] After Fix - Egress : {_r_egr:<5} {_v_egr}")
     if _m_egr:
         print(f"  Counterexample: {_m_egr}")
