@@ -115,7 +115,7 @@ if __name__ == "__main__":
     _infra = load_and_parse(_plan_file)
 
     _result, _model = run_subnet_isolation_check(_infra)
-    _verdict = "⚠️  VULNERABLE" if _result == "SAT" else "✅  SAFE"
+    _verdict = "VULNERABLE" if _result == "SAT" else "SAFE"
     print(f"[SCENARIO 3] Subnet Isolation : {_result:<5} {_verdict}")
     if _model:
         print(f"  Overlapping IP witness: {_model}")

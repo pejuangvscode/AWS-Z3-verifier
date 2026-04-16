@@ -11,20 +11,6 @@ Usage
 
 If no file path is given, the bundled ``tests/sample_plan.json`` is used so the
 tool runs out-of-the-box without real AWS credentials.
-
-Summary table format
---------------------
-    [SCENARIO 1] Internet→EC2 SSH     : SAT VULNERABLE
-    [SCENARIO 1] Internet→EC2 HTTP    : SAT VULNERABLE
-    [SCENARIO 2] Bypass ALB           : UNSAT SAFE
-    [SCENARIO 3] Subnet Isolation     : UNSAT SAFE
-    [SCENARIO 4] Unrestricted Egress  : SAT VULNERABLE
-    [SCENARIO 5] After Fix - SSH      : UNSAT SAFE
-    [SCENARIO 5] After Fix - Egress   : UNSAT SAFE
-
-    Setiap run otomatis menyimpan laporan ke:
-    reports/main/report_1.txt
-    reports/main/report_2.txt
 """
 
 from __future__ import annotations
@@ -98,14 +84,16 @@ def main() -> None:
     except Exception as exc:
         print(f"[ERROR] Failed to parse plan: {exc}", file=sys.stderr)
         sys.exit(1)
- 
+    
     print(
-        f"\n  Resources parsed: "
-        f"{len(infra.get('subnets', []))} subnets, "
-        f"{len(infra.get('security_groups', []))} security groups, "
-        f"{len(infra.get('route_tables', []))} route tables, "
-        f"{len(infra.get('ec2_instances', []))} EC2 instances"
-    )
+                f"\n  Resources parsed: "
+                f"{len(infra.get('subnets', []))} subnets, "
+                f"{len(infra.get('security_groups', []))} security groups, "
+                f"{len(infra.get('route_tables', []))} route tables, "
+                f"{len(infra.get('ec2_instances', []))} EC2 instances, "
+                f"{len(infra.get('albs', []))} ALBs, "
+                f"{len(infra.get('s3_buckets', []))} S3 Buckets"  # <- Tambahkan baris ini
+            )
     print()
  
     # ── Setup reporter ───────────────────────────────────────────────────────

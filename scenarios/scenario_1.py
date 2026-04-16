@@ -8,11 +8,11 @@ directly on port 22 (SSH) or port 80 (HTTP)?
 
 Expected results (vulnerable baseline config)
 ---------------------------------------------
-* SSH  → **SAT** VULNERABLE  (SG allows 0.0.0.0/0:22)
+* SSH  → SAT VULNERABLE  (SG allows 0.0.0.0/0:22)
   Artinya: Z3 berhasil menemukan jalur masuk dari internet ke EC2 via port 22.
   Konfigurasi ini berbahaya karena siapa pun di internet bisa mencoba akses SSH.
 
-* HTTP → **SAT** VULNERABLE  (SG allows 0.0.0.0/0:80)
+* HTTP → SAT VULNERABLE  (SG allows 0.0.0.0/0:80)
   Artinya: Z3 berhasil menemukan jalur masuk dari internet ke EC2 via port 80.
   Ini bisa disengaja (web server publik), namun tetap dicatat sebagai temuan.
 
@@ -245,28 +245,17 @@ if __name__ == "__main__":
     _plan_file = sys.argv[1] if len(sys.argv) > 1 else _default_plan
 
     from parser.parser import load_and_parse
-    from report import Reporter  # modul auto-increment report writer
 
     # Parse terraform plan JSON → dict infrastruktur terstruktur
     # Hasilnya berisi keys: vpc, subnets, security_groups, route_tables, ec2_instances, dst
     _infra = load_and_parse(_plan_file)
-
-    # Buat objek Reporter dengan scope "scenario_1"
-    # - Otomatis buat folder reports/scenario_1/ jika belum ada
-    # - Tentukan nomor file berikutnya (report_1.txt, report_2.txt, dst)
-    # - Catat waktu mulai untuk ditulis di laporan
-    _rpt = Reporter("scenario_1")
 
     # ── Jalankan dan tampilkan pengecekan SSH ──
     _r_ssh, _m_ssh = run_ssh_reachability(_infra)
     _v_ssh = "VULNERABLE" if _r_ssh == "SAT" else "SAFE"
     print(f"[SCENARIO 1] Internet→EC2 SSH  : {_r_ssh:<1} {_v_ssh}")
     if _m_ssh:
-        # Tampilkan counterexample: nilai konkret variabel Z3 yang membuktikan celah ada
-        # Contoh output: ec2_ip_ssh=167772160 → artinya 10.0.0.0 bisa dicapai dari internet
         print(f"  Counterexample: {_m_ssh}")
-    # Daftarkan hasil ke reporter (disimpan di memori, belum ditulis ke file)
-    _rpt.add_result("Internet→EC2 SSH (port 22)", _r_ssh, _m_ssh)
 
     # ── Jalankan dan tampilkan pengecekan HTTP ──
     _r_http, _m_http = run_http_reachability(_infra)
@@ -274,11 +263,3 @@ if __name__ == "__main__":
     print(f"[SCENARIO 1] Internet→EC2 HTTP : {_r_http:<1} {_v_http}")
     if _m_http:
         print(f"  Counterexample: {_m_http}")
-    _rpt.add_result("Internet→EC2 HTTP (port 80)", _r_http, _m_http)
-
-    # ── Simpan semua hasil ke file laporan ──
-    # Reporter menulis file reports/scenario_1/report_N.txt dengan:
-    # - Timestamp mulai dan selesai
-    # - Semua baris hasil (label, SAT/UNSAT, counterexample jika ada)
-    # - Ringkasan: X VULNERABLE | Y SAFE
-    _rpt.save()

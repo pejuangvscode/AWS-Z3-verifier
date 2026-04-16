@@ -82,23 +82,21 @@ def parse_infrastructure(plan: dict[str, Any]) -> dict[str, Any]:
     resources = _get_planned_resources(plan)
 
     infra: dict[str, Any] = {
-        "vpc": None,
+        "vpc": {},
         "subnets": [],
         "security_groups": [],
         "route_tables": [],
         "ec2_instances": [],
         "internet_gateways": [],
-        "albs": [],
-        "s3_buckets": [],
+        "albs": [],          # TAMBAHAN BARU
+        "s3_buckets": [],    # TAMBAHAN BARU
     }
-
     for resource in resources:
         rtype: str = resource.get("type", "")
         values: dict[str, Any] = resource.get("values", {}) or {}
         name: str = resource.get("name", "")
         address: str = resource.get("address", "")
 
-        # Build the enriched entry once
         entry: dict[str, Any] = {"name": name, "address": address, **values}
 
         if rtype == "aws_vpc":
