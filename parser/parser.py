@@ -82,7 +82,7 @@ def parse_infrastructure(plan: dict[str, Any]) -> dict[str, Any]:
     resources = _get_planned_resources(plan)
 
     infra: dict[str, Any] = {
-        "vpc": {},
+        "vpc": None,
         "subnets": [],
         "security_groups": [],
         "route_tables": [],

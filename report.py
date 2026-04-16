@@ -93,7 +93,7 @@ class Reporter:
             lines.append(f"  {label:<25}: {result:<5} {verdict}")
             ce = self._format_model(model)
             if ce:
-                lines.append(f"    └─ counterexample: [{ce}]")
+                lines.append(f"    counterexample: [{ce}]")
 
         lines += [
             "  " + "-" * 63,

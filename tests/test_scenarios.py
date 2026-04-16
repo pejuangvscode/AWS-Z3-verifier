@@ -8,7 +8,7 @@ Expected results (by design of the sample infrastructure)
 ----------------------------------------------------------
 Scenario 1 – SSH reachability    : SAT   (SG allows 0.0.0.0/0 on port 22)
 Scenario 1 – HTTP reachability   : SAT   (SG allows 0.0.0.0/0 on port 80)
-Scenario 2 – ALB bypass          : UNSAT (secure config, internet IP ∉ VPC CIDR)
+Scenario 2 – ALB bypass          : SAT   (vulnerable, EC2 and ALB share same SG with 0.0.0.0/0)
 Scenario 3 – Subnet isolation    : UNSAT (10.0.0.0/24 and 10.0.1.0/24 don't overlap)
 Scenario 4 – Unrestricted egress : SAT   (all-traffic egress rule + IGW route)
 Scenario 5 – After fix, SSH      : UNSAT (ingress restricted to VPC CIDR only)
@@ -55,10 +55,10 @@ class TestScenario1:
         assert model is not None
 
     def test_closed_port_is_unsat(self, infra: dict) -> None:
-        """Port 3306 (MySQL) is not in any ingress rule → UNSAT."""
+        """Port 5432 (PostgreSQL) is not in any ingress rule → UNSAT."""
         from scenarios.scenario_1 import _check_port_reachability
 
-        result, model = _check_port_reachability(infra, 3306, "mysql")
+        result, model = _check_port_reachability(infra, 5432, "postgres")
         assert result == "UNSAT"
         assert model is None
 
@@ -68,13 +68,13 @@ class TestScenario1:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestScenario2:
-    def test_bypass_alb_is_unsat(self, infra: dict) -> None:
-        """Hardened EC2 SG (VPC-only ingress) → UNSAT (internet can't bypass ALB)."""
+    def test_bypass_alb_is_sat(self, infra: dict) -> None:
+        """EC2 and ALB share same SG (0.0.0.0/0 on port 80) → SAT (internet can bypass ALB)."""
         from scenarios.scenario_2 import run_bypass_alb_check
 
         result, model = run_bypass_alb_check(infra)
-        assert result == "UNSAT", "Expected UNSAT: secure config blocks direct access"
-        assert model is None
+        assert result == "SAT", "Expected SAT: EC2 SG allows 0.0.0.0/0, direct access possible"
+        assert model is not None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

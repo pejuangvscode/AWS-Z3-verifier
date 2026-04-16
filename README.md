@@ -108,21 +108,28 @@ pytest tests/ -v
   Plan: tests/sample_plan.json
 =================================================================
 
-  Resources parsed: 2 subnets, 2 security groups, 1 route tables, 2 EC2 instances
+  Resources parsed: 2 subnets, 1 security groups, 1 route tables, 2 EC2 instances, 1 ALBs, 1 S3 Buckets
 
   SECURITY VERIFICATION RESULTS
-  -----------------------------------------------------------------
-  [SCENARIO 1] Internet→EC2 SSH     : SAT   VULNERABLE
-  [SCENARIO 1] Internet→EC2 HTTP    : SAT   VULNERABLE
-  [SCENARIO 2] Bypass ALB           : UNSAT SAFE
-  [SCENARIO 3] Subnet Isolation     : UNSAT SAFE
-  [SCENARIO 4] Unrestricted Egress  : SAT   VULNERABLE
-  [SCENARIO 5] After Fix - SSH      : UNSAT SAFE
-  [SCENARIO 5] After Fix - Egress   : UNSAT SAFE
-  -----------------------------------------------------------------
+  ---------------------------------------------------------------
+  [SCENARIO 1] Internet->EC2 SSH          : SAT   VULNERABLE
+    counterexample: [ec2_ip_ssh=167772160]
+  [SCENARIO 1] Internet->EC2 HTTP         : SAT   VULNERABLE
+    counterexample: [ec2_ip_http=167772160]
+  [SCENARIO 2] Bypass ALB                 : SAT   VULNERABLE
+    counterexample: [bypass_ec2_ip=167772160, bypass_internet_ip=4127129600]
+  [SCENARIO 3] Subnet Isolation           : UNSAT SAFE
+  [SCENARIO 4] Unrestricted Egress        : SAT   VULNERABLE
+    counterexample: [egress_src_ip=167772160]
+  [SCENARIO 5] After Fix - SSH            : UNSAT SAFE
+  [SCENARIO 5] After Fix - Egress         : UNSAT SAFE
+  ---------------------------------------------------------------
 
-  Summary: 3 VULNERABLE  |  4 SAFE
+  Summary: 4 VULNERABLE  |  3 SAFE
 ```
+
+Report otomatis tersimpan ke `output/main/report.txt` setiap kali `main.py` dijalankan.
+Setiap scenario juga bisa dijalankan secara individual dan menyimpan report ke folder masing-masing di `output/`.
 
 ---
 
@@ -155,11 +162,11 @@ port ∈ [from, to]  ⟺  from ≤ port ≤ to
 
 | # | Check | Baseline | After Fix |
 |---|---|---|---|
-| 1 | Internet → EC2 SSH (port 22) | SAT | UNSAT |
-| 1 | Internet → EC2 HTTP (port 80) | SAT | — |
-| 2 | Direct access bypassing ALB | UNSAT | — |
-| 3 | sub1 / sub2 CIDR overlap | UNSAT | — |
-| 4 | Unrestricted egress / exfil | SAT | UNSAT |
+| 1 | Internet -> EC2 SSH (port 22) | SAT (VULNERABLE) | UNSAT (SAFE) |
+| 1 | Internet -> EC2 HTTP (port 80) | SAT (VULNERABLE) | — |
+| 2 | Direct access bypassing ALB | SAT (VULNERABLE) | — |
+| 3 | sub1 / sub2 CIDR overlap | UNSAT (SAFE) | — |
+| 4 | Unrestricted egress / exfil | SAT (VULNERABLE) | UNSAT (SAFE) |
 
 ### Recommended Fixes
 

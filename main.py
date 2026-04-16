@@ -38,7 +38,7 @@ def _print_row(label: str, result: str, model: ModelRef | None = None) -> None:
         assignments = ", ".join(
             f"{d.name()}={model[d]}" for d in model.decls()
         )
-        print(f"    └─ counterexample: [{assignments}]")
+        print(f"    counterexample: [{assignments}]")
  
  
 # ──────────────────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ def main() -> None:
                 f"{len(infra.get('route_tables', []))} route tables, "
                 f"{len(infra.get('ec2_instances', []))} EC2 instances, "
                 f"{len(infra.get('albs', []))} ALBs, "
-                f"{len(infra.get('s3_buckets', []))} S3 Buckets"  # <- Tambahkan baris ini
+                f"{len(infra.get('s3_buckets', []))} S3 Buckets"
             )
     print()
  
@@ -114,8 +114,8 @@ def main() -> None:
         results.append((label, result, model))
         rpt.add_result(label.strip(), result, model)
  
-    run("[SCENARIO 1] Internet→EC2 SSH    ", run_ssh_reachability, infra)
-    run("[SCENARIO 1] Internet→EC2 HTTP   ", run_http_reachability, infra)
+    run("[SCENARIO 1] Internet->EC2 SSH    ", run_ssh_reachability, infra)
+    run("[SCENARIO 1] Internet->EC2 HTTP   ", run_http_reachability, infra)
     run("[SCENARIO 2] Bypass ALB          ", run_bypass_alb_check, infra)
     run("[SCENARIO 3] Subnet Isolation    ", run_subnet_isolation_check, infra)
     run("[SCENARIO 4] Unrestricted Egress ", run_egress_check, infra)

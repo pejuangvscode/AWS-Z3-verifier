@@ -45,7 +45,7 @@
             "id": "subnet-0123456789abcdef0",
             "vpc_id": "vpc-0123456789abcdef0",
             "map_public_ip_on_launch": true,
-            "tags": {}
+            "tags": { "Name": "public-sub1" }
           }
         },
         {
@@ -61,7 +61,39 @@
             "id": "subnet-0123456789abcdef1",
             "vpc_id": "vpc-0123456789abcdef0",
             "map_public_ip_on_launch": true,
-            "tags": {}
+            "tags": { "Name": "public-sub2" }
+          }
+        },
+        {
+          "address": "aws_subnet.sub3",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "sub3",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "cidr_block": "10.0.2.0/24",
+            "availability_zone": "us-east-1a",
+            "id": "subnet-0123456789abcdef2",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "map_public_ip_on_launch": false,
+            "tags": { "Name": "private-sub1" }
+          }
+        },
+        {
+          "address": "aws_subnet.sub4",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "sub4",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "cidr_block": "10.0.3.0/24",
+            "availability_zone": "us-east-1b",
+            "id": "subnet-0123456789abcdef3",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "map_public_ip_on_launch": false,
+            "tags": { "Name": "private-sub2" }
           }
         },
         {
@@ -82,7 +114,28 @@
                 "instance_id": ""
               }
             ],
-            "tags": {}
+            "tags": { "Name": "public-rt" }
+          }
+        },
+        {
+          "address": "aws_route_table.privateRT",
+          "mode": "managed",
+          "type": "aws_route_table",
+          "name": "privateRT",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "rtb-0123456789abcdef1",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "route": [
+              {
+                "cidr_block": "0.0.0.0/0",
+                "gateway_id": "",
+                "nat_gateway_id": "nat-0123456789abcdef0",
+                "instance_id": ""
+              }
+            ],
+            "tags": { "Name": "private-rt" }
           }
         },
         {
@@ -134,9 +187,141 @@
                 "self": false
               }
             ],
-            "tags": {
-              "Name": "Web-sg"
-            }
+            "tags": { "Name": "Web-sg" }
+          }
+        },
+        {
+          "address": "aws_security_group.albSg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "albSg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0123456789abcdef1",
+            "name": "alb-sg",
+            "description": "Security group for Application Load Balancer only",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "ingress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "HTTP from internet",
+                "from_port": 80,
+                "to_port": 80,
+                "protocol": "tcp",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              },
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "HTTPS from internet",
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "egress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "tags": { "Name": "alb-sg" }
+          }
+        },
+        {
+          "address": "aws_security_group.bastionSg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "bastionSg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0123456789abcdef2",
+            "name": "bastion-sg",
+            "description": "Security group for Bastion host – SSH restricted to trusted IP",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "ingress": [
+              {
+                "cidr_blocks": ["203.0.113.0/24"],
+                "description": "SSH from trusted corporate IP",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "egress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "",
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "tags": { "Name": "bastion-sg" }
+          }
+        },
+        {
+          "address": "aws_security_group.dbSg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "dbSg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0123456789abcdef3",
+            "name": "db-sg",
+            "description": "Security group for DB instances – MySQL restricted to VPC CIDR",
+            "vpc_id": "vpc-0123456789abcdef0",
+            "ingress": [
+              {
+                "cidr_blocks": ["10.0.0.0/16"],
+                "description": "MySQL from VPC internal only",
+                "from_port": 3306,
+                "to_port": 3306,
+                "protocol": "tcp",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "egress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "",
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false
+              }
+            ],
+            "tags": { "Name": "db-sg" }
           }
         },
         {
@@ -152,9 +337,7 @@
             "instance_type": "t2.micro",
             "subnet_id": "subnet-0123456789abcdef0",
             "vpc_security_group_ids": ["sg-0123456789abcdef0"],
-            "tags": {
-              "Name": "webserver1"
-            }
+            "tags": { "Name": "webserver1" }
           }
         },
         {
@@ -170,9 +353,55 @@
             "instance_type": "t2.micro",
             "subnet_id": "subnet-0123456789abcdef1",
             "vpc_security_group_ids": ["sg-0123456789abcdef0"],
-            "tags": {
-              "Name": "webserver2"
-            }
+            "tags": { "Name": "webserver2" }
+          }
+        },
+        {
+          "address": "aws_instance.bastion",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "bastion",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "i-0123456789abcdef2",
+            "ami": "ami-0261755bbcb8c4a84",
+            "instance_type": "t2.micro",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "vpc_security_group_ids": ["sg-0123456789abcdef2"],
+            "tags": { "Name": "bastion-host" }
+          }
+        },
+        {
+          "address": "aws_instance.appserver",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "appserver",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "i-0123456789abcdef3",
+            "ami": "ami-0261755bbcb8c4a84",
+            "instance_type": "t2.micro",
+            "subnet_id": "subnet-0123456789abcdef2",
+            "vpc_security_group_ids": ["sg-0123456789abcdef0"],
+            "tags": { "Name": "app-server" }
+          }
+        },
+        {
+          "address": "aws_instance.dbserver",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "dbserver",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "i-0123456789abcdef4",
+            "ami": "ami-0261755bbcb8c4a84",
+            "instance_type": "t2.micro",
+            "subnet_id": "subnet-0123456789abcdef3",
+            "vpc_security_group_ids": ["sg-0123456789abcdef3"],
+            "tags": { "Name": "db-server" }
           }
         },
         {
@@ -191,9 +420,7 @@
               "subnet-0123456789abcdef0",
               "subnet-0123456789abcdef1"
             ],
-            "tags": {
-              "Name": "web"
-            }
+            "tags": { "Name": "web" }
           }
         },
         {
@@ -248,6 +475,30 @@
           "values": {
             "bucket": "abhisheksterraform2023project",
             "tags": {}
+          }
+        },
+        {
+          "address": "aws_s3_bucket.logs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "logs",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "my-access-logs-bucket-demo",
+            "tags": { "Name": "logs-bucket" }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.backup",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "backup",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "my-backup-bucket-demo",
+            "tags": { "Name": "backup-bucket" }
           }
         }
       ]

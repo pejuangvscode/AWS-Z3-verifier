@@ -48,7 +48,7 @@ import os
 import sys
 from typing import Any
 
-from z3 import And, BitVec, BitVecVal, BoolVal, ModelRef, Not, Solver, sat
+from z3 import BitVec, BitVecVal, ModelRef, Not, Solver, sat
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -182,14 +182,22 @@ def run_fixed_egress_check() -> tuple[str, ModelRef | None]:
 
 
 if __name__ == "__main__":
+    from report import Reporter
+    _rpt = Reporter("scenario_5")
+
     _r_ssh, _m_ssh = run_fixed_ssh_check()
     _v_ssh = "VULNERABLE" if _r_ssh == "SAT" else "SAFE"
     print(f"[SCENARIO 5] After Fix - SSH    : {_r_ssh:<5} {_v_ssh}")
     if _m_ssh:
         print(f"  Counterexample: {_m_ssh}")
+    _rpt.add_result("[SCENARIO 5] After Fix - SSH", _r_ssh, _m_ssh)
 
     _r_egr, _m_egr = run_fixed_egress_check()
     _v_egr = "VULNERABLE" if _r_egr == "SAT" else "SAFE"
     print(f"[SCENARIO 5] After Fix - Egress : {_r_egr:<5} {_v_egr}")
     if _m_egr:
         print(f"  Counterexample: {_m_egr}")
+    _rpt.add_result("[SCENARIO 5] After Fix - Egress", _r_egr, _m_egr)
+
+    _rpt.save()
+    print(f"\n  Report saved to: output/scenario_5/report.txt")

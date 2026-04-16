@@ -35,7 +35,7 @@ compatible → SAT (VULNERABLE): a public IP can reach EC2 directly.
 If constraint 3 were restricted to the VPC CIDR only, constraints 2 and 3
 would contradict → UNSAT (SAFE): direct access is blocked.
 
-Laporan disimpan otomatis ke: reports/scenario_2/report_N.txt
+Laporan disimpan otomatis ke: output/scenario_2/report.txt
 """
 
 from __future__ import annotations
@@ -44,12 +44,12 @@ import os
 import sys
 from typing import Any
 
-from z3 import BitVec, BitVecVal, ModelRef, Not, Or, Solver, sat
+from z3 import BitVec, ModelRef, Not, Solver, sat
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from parser.extractor import cidr_to_network_mask, extract_security_group_rules
-from z3_engine.models import ip_in_subnet, port_in_range
+from z3_engine.models import ip_in_subnet
 
 
 def run_bypass_alb_check(infra: dict[str, Any]) -> tuple[str, ModelRef | None]:
@@ -140,11 +140,17 @@ if __name__ == "__main__":
     _plan_file = sys.argv[1] if len(sys.argv) > 1 else _default_plan
 
     from parser.parser import load_and_parse
+    from report import Reporter
 
     _infra = load_and_parse(_plan_file)
+    _rpt = Reporter("scenario_2")
 
     _result, _model = run_bypass_alb_check(_infra)
     _verdict = "VULNERABLE" if _result == "SAT" else "SAFE"
     print(f"[SCENARIO 2] Bypass ALB       : {_result:<5} {_verdict}")
     if _model:
         print(f"  Counterexample: {_model}")
+    _rpt.add_result("[SCENARIO 2] Bypass ALB", _result, _model)
+
+    _rpt.save(extra_notes=f"Plan file: {_plan_file}")
+    print(f"\n  Report saved to: output/scenario_2/report.txt")

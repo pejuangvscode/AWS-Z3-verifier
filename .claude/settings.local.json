@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scenarios/scenario_1.py)",
+      "Bash(python scenarios/scenario_2.py)",
+      "Bash(python scenarios/scenario_3.py)",
+      "Bash(python scenarios/scenario_4.py)",
+      "Bash(python scenarios/scenario_5.py)"
+    ]
+  }
+}

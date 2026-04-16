@@ -1,27 +1,18 @@
 =================================================================
   AWS Infrastructure Security Verifier (Z3 SMT)
 =================================================================
-  Scope   : main
-  Started : 2026-04-16 18:09:11
-  Finished: 2026-04-16 18:09:11  (0.02s)
+  Scope   : scenario_2
+  Started : 2026-04-16 17:57:59
+  Finished: 2026-04-16 17:57:59  (0.01s)
 =================================================================
 
   SECURITY VERIFICATION RESULTS (LATEST)
   ---------------------------------------------------------------
-  [SCENARIO 1] Internet->EC2 SSH: SAT   VULNERABLE
-    counterexample: [ec2_ip_ssh=167772928]
-  [SCENARIO 1] Internet->EC2 HTTP: SAT   VULNERABLE
-    counterexample: [ec2_ip_http=167772672]
   [SCENARIO 2] Bypass ALB  : SAT   VULNERABLE
     counterexample: [bypass_ec2_ip=167772160, bypass_internet_ip=4127129600]
-  [SCENARIO 3] Subnet Isolation: UNSAT SAFE
-  [SCENARIO 4] Unrestricted Egress: SAT   VULNERABLE
-    counterexample: [egress_src_ip=167772160]
-  [SCENARIO 5] After Fix - SSH: UNSAT SAFE
-  [SCENARIO 5] After Fix - Egress: UNSAT SAFE
   ---------------------------------------------------------------
 
-  Summary: 4 VULNERABLE  |  3 SAFE
+  Summary: 1 VULNERABLE  |  0 SAFE
 
   NOTES
   ---------------------------------------------------------------

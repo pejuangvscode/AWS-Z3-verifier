@@ -111,11 +111,17 @@ if __name__ == "__main__":
     _plan_file = sys.argv[1] if len(sys.argv) > 1 else _default_plan
 
     from parser.parser import load_and_parse
+    from report import Reporter
 
     _infra = load_and_parse(_plan_file)
+    _rpt = Reporter("scenario_3")
 
     _result, _model = run_subnet_isolation_check(_infra)
     _verdict = "VULNERABLE" if _result == "SAT" else "SAFE"
     print(f"[SCENARIO 3] Subnet Isolation : {_result:<5} {_verdict}")
     if _model:
         print(f"  Overlapping IP witness: {_model}")
+    _rpt.add_result("[SCENARIO 3] Subnet Isolation", _result, _model)
+
+    _rpt.save(extra_notes=f"Plan file: {_plan_file}")
+    print(f"\n  Report saved to: output/scenario_3/report.txt")

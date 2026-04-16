@@ -1,5 +1,5 @@
 """
-scenario_1.py – Internet → EC2 reachability via SSH (port 22) and HTTP (port 80).
+scenario_1.py – Internet -> EC2 reachability via SSH (port 22) and HTTP (port 80).
 
 Security question
 -----------------
@@ -8,17 +8,15 @@ directly on port 22 (SSH) or port 80 (HTTP)?
 
 Expected results (vulnerable baseline config)
 ---------------------------------------------
-* SSH  → SAT VULNERABLE  (SG allows 0.0.0.0/0:22)
+* SSH  -> SAT VULNERABLE  (SG allows 0.0.0.0/0:22)
   Artinya: Z3 berhasil menemukan jalur masuk dari internet ke EC2 via port 22.
   Konfigurasi ini berbahaya karena siapa pun di internet bisa mencoba akses SSH.
 
-* HTTP → SAT VULNERABLE  (SG allows 0.0.0.0/0:80)
+* HTTP -> SAT VULNERABLE  (SG allows 0.0.0.0/0:80)
   Artinya: Z3 berhasil menemukan jalur masuk dari internet ke EC2 via port 80.
   Ini bisa disengaja (web server publik), namun tetap dicatat sebagai temuan.
 
-Laporan disimpan otomatis ke: reports/scenario_1/report_N.txt
-Setiap run membuat file baru (report_1.txt, report_2.txt, dst) tanpa menimpa
-laporan sebelumnya, sehingga perbandingan antar-run tetap tersimpan.
+Laporan disimpan otomatis ke: output/scenario_1/report.txt
 """
 
 from __future__ import annotations
@@ -40,7 +38,7 @@ from z3 import And, BitVec, BitVecVal, BoolVal, ModelRef, Not, Or, Solver, sat
 # ketika file ini dijalankan langsung (python scenarios/scenario_1.py)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# cidr_to_network_mask       : konversi "10.0.0.0/24" → (network_int, mask_int) sebagai integer
+# cidr_to_network_mask       : konversi "10.0.0.0/24" -> (network_int, mask_int) sebagai integer
 # extract_route_table        : ambil daftar route dari dict route table
 # extract_security_group_rules: ambil semua aturan ingress/egress dari sebuah Security Group
 from parser.extractor import cidr_to_network_mask, extract_route_table, extract_security_group_rules
@@ -69,8 +67,8 @@ def _has_igw_route(infra: dict[str, Any]) -> bool:
     - Iterasi semua route table di infra["route_tables"]
     - Setiap route table diekstrak menggunakan extract_route_table()
     - Cari route dengan destination "0.0.0.0/0" DAN gateway_id diawali "igw-"
-    - Jika ditemukan → return True (subnet publik, ada jalur internet)
-    - Jika tidak ditemukan → return False (subnet privat, tidak ada jalur internet)
+    - Jika ditemukan -> return True (subnet publik, ada jalur internet)
+    - Jika tidak ditemukan -> return False (subnet privat, tidak ada jalur internet)
     """
     for rt in infra.get("route_tables", []):
         for r in extract_route_table(rt):
@@ -96,18 +94,18 @@ def _check_port_reachability(
 
     Alur kerja (sesuai paper, Section II.C Skenario 1):
     Memverifikasi 4 kondisi secara bersamaan:
-      1. IGW terhubung ke VPC          → dicek via _has_igw_route() sebelum Z3
-      2. Route table punya default route ke IGW  → dicek via _has_igw_route()
-      3. Subnet bersifat publik        → dicek via _has_igw_route()
-      4. Security Group mengizinkan port dari semua IP → dicek via constraint Z3
+      1. IGW terhubung ke VPC          -> dicek via _has_igw_route() sebelum Z3
+      2. Route table punya default route ke IGW  -> dicek via _has_igw_route()
+      3. Subnet bersifat publik        -> dicek via _has_igw_route()
+      4. Security Group mengizinkan port dari semua IP -> dicek via constraint Z3
 
     Return:
-    - ("SAT", model)   → jalur terbuka, model berisi contoh konkret IP/port → VULNERABLE
-    - ("UNSAT", None)  → tidak ada jalur yang memenuhi semua constraint → SAFE
+    - ("SAT", model)   -> jalur terbuka, model berisi contoh konkret IP/port -> VULNERABLE
+    - ("UNSAT", None)  -> tidak ada jalur yang memenuhi semua constraint -> SAFE
     """
 
     # ── Prasyarat: harus ada IGW route agar subnet bersifat publik ──
-    # Jika tidak ada IGW route, tidak mungkin ada traffic dari internet → langsung UNSAT
+    # Jika tidak ada IGW route, tidak mungkin ada traffic dari internet -> langsung UNSAT
     if not _has_igw_route(infra):
         return "UNSAT", None
 
@@ -128,7 +126,7 @@ def _check_port_reachability(
     # Ambil semua nilai CIDR dari semua subnet yang ada di infra
     subnet_cidrs = [s.get("cidr_block") for s in infra.get("subnets", []) if s.get("cidr_block")]
     if not subnet_cidrs:
-        # Tidak ada subnet terdefinisi → tidak ada EC2 yang bisa dicapai
+        # Tidak ada subnet terdefinisi -> tidak ada EC2 yang bisa dicapai
         return "UNSAT", None
 
     # Bangun list constraint: ip_in_subnet(ec2_ip, net, mask) untuk setiap subnet
@@ -150,35 +148,35 @@ def _check_port_reachability(
             if rule["direction"] != "ingress":
                 continue
             # Cek apakah target_port ada di dalam rentang [from_port, to_port] aturan ini
-            # Contoh: rule from_port=0, to_port=65535 → mencakup semua port termasuk 22 dan 80
+            # Contoh: rule from_port=0, to_port=65535 -> mencakup semua port termasuk 22 dan 80
             if not (rule["from_port"] <= target_port <= rule["to_port"]):
                 continue
             # Iterasi daftar CIDR yang diizinkan oleh aturan ini
             for cidr_block in rule.get("cidr_blocks", []):
                 net, mask = cidr_to_network_mask(cidr_block)
                 # Tambahkan constraint: internet_ip harus memenuhi CIDR ini
-                # Jika cidr_block = "0.0.0.0/0" → (ip & 0) == 0 → selalu True untuk IP apapun
-                # Artinya: siapapun di internet diizinkan → ini yang membuat VULNERABLE
+                # Jika cidr_block = "0.0.0.0/0" -> (ip & 0) == 0 -> selalu True untuk IP apapun
+                # Artinya: siapapun di internet diizinkan -> ini yang membuat VULNERABLE
                 solver.add(ip_in_subnet(internet_ip, net, mask))
                 sg_allows = True
                 break  # Satu CIDR yang cocok sudah cukup membuktikan akses terbuka
         if sg_allows:
             break  # Satu SG yang cocok sudah cukup, tidak perlu periksa SG lain
 
-    # Jika tidak ada SG yang mengizinkan port ini → default-deny berlaku → UNSAT
+    # Jika tidak ada SG yang mengizinkan port ini -> default-deny berlaku -> UNSAT
     if not sg_allows:
         return "UNSAT", None
 
     # ── Constraint 3 (trivial): verifikasi port sama persis dengan target_port ──
-    # port_in_range(port_bv, target_port, target_port) → target_port ≤ port_bv ≤ target_port
+    # port_in_range(port_bv, target_port, target_port) -> target_port ≤ port_bv ≤ target_port
     # Ini selalu True karena port_bv sudah didefinisikan sebagai target_port,
     # tapi membantu Z3 menyertakan informasi port dalam counterexample model
     solver.add(port_in_range(port_bv, target_port, target_port))
 
     # ── Jalankan solver Z3 ──
     # Z3 mencari SATU kombinasi nilai (internet_ip, ec2_ip) yang memenuhi SEMUA constraint
-    # SAT   = ditemukan kombinasi valid → jalur dari internet ke EC2 terbuka → VULNERABLE
-    # UNSAT = tidak ada kombinasi yang memenuhi semua constraint sekaligus → SAFE
+    # SAT   = ditemukan kombinasi valid -> jalur dari internet ke EC2 terbuka -> VULNERABLE
+    # UNSAT = tidak ada kombinasi yang memenuhi semua constraint sekaligus -> SAFE
     result = solver.check()
     if result == sat:
         # solver.model() berisi nilai konkret variabel yang membuktikan celah
@@ -201,8 +199,8 @@ def run_ssh_reachability(infra: dict[str, Any]) -> tuple[str, ModelRef | None]:
     oleh Rahman et al. [4] dalam paper.
 
     Return:
-    - ("SAT", model)  → SSH terbuka dari internet → VULNERABLE
-    - ("UNSAT", None) → SSH tidak bisa dicapai dari internet → SAFE
+    - ("SAT", model)  -> SSH terbuka dari internet -> VULNERABLE
+    - ("UNSAT", None) -> SSH tidak bisa dicapai dari internet -> SAFE
     """
     return _check_port_reachability(infra, 22, "ssh")
 
@@ -216,8 +214,8 @@ def run_http_reachability(infra: dict[str, Any]) -> tuple[str, ModelRef | None]:
     (Application Load Balancer) terlebih dahulu, bukan langsung ke EC2.
 
     Return:
-    - ("SAT", model)  → HTTP terbuka langsung ke EC2 dari internet → VULNERABLE
-    - ("UNSAT", None) → HTTP tidak bisa dicapai langsung dari internet → SAFE
+    - ("SAT", model)  -> HTTP terbuka langsung ke EC2 dari internet -> VULNERABLE
+    - ("UNSAT", None) -> HTTP tidak bisa dicapai langsung dari internet -> SAFE
     """
     return _check_port_reachability(infra, 80, "http")
 
@@ -231,35 +229,34 @@ def run_http_reachability(infra: dict[str, Any]) -> tuple[str, ModelRef | None]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Tentukan path default ke sample_plan.json (mock terraform plan)
-    # os.path.abspath(__file__)     → path absolut file ini: .../scenarios/scenario_1.py
-    # os.path.dirname(...)          → .../scenarios/
-    # os.path.dirname(...) dua kali → root project: .../AWS-Z3-verifier/
     _default_plan = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "tests",
         "sample_plan.json",
     )
-    # Jika ada argumen CLI (python scenario_1.py path/ke/plan.json), gunakan itu
-    # Jika tidak ada argumen, gunakan sample_plan.json bawaan (tidak perlu kredensial AWS)
     _plan_file = sys.argv[1] if len(sys.argv) > 1 else _default_plan
 
     from parser.parser import load_and_parse
+    from report import Reporter
 
-    # Parse terraform plan JSON → dict infrastruktur terstruktur
-    # Hasilnya berisi keys: vpc, subnets, security_groups, route_tables, ec2_instances, dst
     _infra = load_and_parse(_plan_file)
+    _rpt = Reporter("scenario_1")
 
     # ── Jalankan dan tampilkan pengecekan SSH ──
     _r_ssh, _m_ssh = run_ssh_reachability(_infra)
     _v_ssh = "VULNERABLE" if _r_ssh == "SAT" else "SAFE"
-    print(f"[SCENARIO 1] Internet→EC2 SSH  : {_r_ssh:<1} {_v_ssh}")
+    print(f"[SCENARIO 1] Internet->EC2 SSH  : {_r_ssh:<5} {_v_ssh}")
     if _m_ssh:
         print(f"  Counterexample: {_m_ssh}")
+    _rpt.add_result("[SCENARIO 1] Internet->EC2 SSH", _r_ssh, _m_ssh)
 
     # ── Jalankan dan tampilkan pengecekan HTTP ──
     _r_http, _m_http = run_http_reachability(_infra)
     _v_http = "VULNERABLE" if _r_http == "SAT" else "SAFE"
-    print(f"[SCENARIO 1] Internet→EC2 HTTP : {_r_http:<1} {_v_http}")
+    print(f"[SCENARIO 1] Internet->EC2 HTTP : {_r_http:<5} {_v_http}")
     if _m_http:
         print(f"  Counterexample: {_m_http}")
+    _rpt.add_result("[SCENARIO 1] Internet->EC2 HTTP", _r_http, _m_http)
+
+    _rpt.save(extra_notes=f"Plan file: {_plan_file}")
+    print(f"\n  Report saved to: output/scenario_1/report.txt")

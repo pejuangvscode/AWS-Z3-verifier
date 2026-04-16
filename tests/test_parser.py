@@ -206,25 +206,27 @@ class TestParseInfrastructure:
 
     def test_two_subnets(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
-        assert len(infra["subnets"]) == 2
+        assert len(infra["subnets"]) == 4  # sub1, sub2 (public) + sub3, sub4 (private)
 
     def test_subnet_cidrs(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
         cidrs = {s["cidr_block"] for s in infra["subnets"]}
         assert "10.0.0.0/24" in cidrs
         assert "10.0.1.0/24" in cidrs
+        assert "10.0.2.0/24" in cidrs
+        assert "10.0.3.0/24" in cidrs
 
     def test_security_groups(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
-        assert len(infra["security_groups"]) == 2
+        assert len(infra["security_groups"]) == 4  # webSg, albSg, bastionSg, dbSg
 
     def test_route_table(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
-        assert len(infra["route_tables"]) == 1
+        assert len(infra["route_tables"]) == 2  # public RT (IGW) + private RT (NAT GW)
 
     def test_ec2_instances(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
-        assert len(infra["ec2_instances"]) == 2
+        assert len(infra["ec2_instances"]) == 5  # web1, web2, bastion, appserver, dbserver
 
     def test_igw_present(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
@@ -236,7 +238,7 @@ class TestParseInfrastructure:
 
     def test_s3_bucket(self) -> None:
         infra = parse_infrastructure(self._plan_from_json())
-        assert len(infra["s3_buckets"]) == 1
+        assert len(infra["s3_buckets"]) == 3  # example, logs, backup
 
     def test_load_and_parse_matches(self) -> None:
         infra = load_and_parse(SAMPLE_PLAN_PATH)
