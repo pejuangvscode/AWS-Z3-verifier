@@ -1,221 +1,196 @@
 # AWS Infrastructure Security Verifier (Z3 SMT)
 
-A Python tool that performs **formal security verification** of AWS infrastructure
-by analysing Terraform plan JSON output with the **Z3 SMT Solver**.  Instead of
-running live traffic or relying on heuristics, the tool encodes network security
-properties as mathematical constraints and asks Z3 to either find a violating
-example (SAT = vulnerable) or prove none exists (UNSAT = safe).
+A Python tool for **formal verification** of AWS network security properties
+using the Z3 SMT Solver.
 
-The verifier can also parse Terraform **directly from `.tf` files** (single file
-or full directory) without generating a plan JSON first.
+The current pipeline supports **direct evaluation from Terraform source files**
+(without generating a JSON plan first), while still supporting Terraform JSON
+plan input for backward compatibility.
+
+---
+
+## What This Tool Checks
+
+The verifier models AWS networking behavior and checks the following properties:
+
+1. Internet reachability to EC2 on SSH and HTTP
+2. Direct EC2 access bypassing ALB
+3. Subnet CIDR overlap (isolation)
+4. Unrestricted egress / exfiltration path
+5. Re-verification after hardening fixes
+
+Each scenario returns:
+- `SAT` (vulnerable): the unsafe path is possible
+- `UNSAT` (safe): the unsafe path is not possible in the model
+
+When `SAT`, the solver prints a concrete counterexample model.
+
+---
+
+## Input Modes (Auto-Detected)
+
+The parser auto-detects the input type:
+
+- **Terraform source directory** (recommended): `terraform/`
+- **Single Terraform file**: `terraform/main.tf`
+- **Terraform plan JSON** (optional compatibility): `plan.json`
+
+### Direct `.tf` parsing behavior
+
+When input is `.tf`:
+- If a single `.tf` file is provided, all sibling `.tf` files in the same folder
+  are loaded.
+- Variable defaults (e.g. `var.cidr`) are resolved.
+- Common resource references (e.g. `aws_internet_gateway.igw.id`) are resolved
+  into deterministic values.
+- If `python-hcl2` is available, it is used.
+- If not available, a built-in fallback parser is used.
+
+This means the main workflow no longer requires `terraform plan -json`.
 
 ---
 
 ## Project Structure
 
-```
+```text
 final_project/
-├── terraform/
-│   ├── main.tf           # VPC, subnets, IGW, route table, SGs, EC2, ALB, S3
-│   ├── variables.tf
-│   └── outputs.tf
+├── main.py
+├── report.py
+├── requirements.txt
+├── README.md
 ├── parser/
 │   ├── __init__.py
-│   ├── parser.py         # Load & parse terraform JSON or .tf → structured dict
-│   └── extractor.py      # CIDR conversion, rule extraction helpers
+│   ├── parser.py
+│   └── extractor.py
 ├── z3_engine/
 │   ├── __init__.py
-│   ├── models.py         # BitVec IP / port primitives
-│   ├── axioms.py         # AWS implicit security axioms
-│   └── constraints.py    # Reachability / isolation / egress constraint builders
+│   ├── models.py
+│   ├── axioms.py
+│   └── constraints.py
 ├── scenarios/
 │   ├── __init__.py
-│   ├── scenario_1.py     # Internet → EC2 on port 22 & 80
-│   ├── scenario_2.py     # Direct EC2 access bypassing ALB
-│   ├── scenario_3.py     # Subnet isolation (no CIDR overlap)
-│   ├── scenario_4.py     # Unrestricted egress / data exfiltration
-│   └── scenario_5.py     # Re-verify after applying security fixes
+│   ├── scenario_1.py
+│   ├── scenario_2.py
+│   ├── scenario_3.py
+│   ├── scenario_4.py
+│   └── scenario_5.py
+├── terraform/
+│   ├── provider.tf
+│   ├── variables.tf
+│   ├── main.tf
+│   ├── private_network.tf
+│   ├── sg_extra.tf
+│   ├── extra_instances.tf
+│   ├── userdata.sh
+│   └── userdata1.sh
 ├── tests/
-│   ├── __init__.py
-│   ├── sample_plan.json  # Mock terraform plan (no AWS credentials needed)
+│   ├── sample_plan.json
 │   ├── test_parser.py
 │   ├── test_models.py
 │   └── test_scenarios.py
-├── main.py               # CLI entry point
-├── requirements.txt
-└── README.md
+└── output/
 ```
 
 ---
 
-## Infrastructure Topology
+## Quick Start (Using venv)
 
-| Resource | Details |
-|---|---|
-| VPC | `10.0.0.0/16` |
-| Subnet sub1 | `10.0.0.0/24`  (public, us-east-1a) |
-| Subnet sub2 | `10.0.1.0/24`  (public, us-east-1b) |
-| Internet Gateway | Default route `0.0.0.0/0` → IGW |
-| EC2 SG (baseline) | Ingress: TCP/22, TCP/80 from `0.0.0.0/0`; Egress: all |
-| EC2 instances | 2 × t3.micro, one per subnet |
-| ALB | Application Load Balancer across both subnets |
-| S3 Bucket | `my-data-bucket-secure-demo` |
+### 1. Create and activate virtual environment
 
----
+```bash
+python -m venv .venv
+```
 
-## Quick Start
+Windows PowerShell:
 
-### 1. Install dependencies
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Run all scenarios against the bundled sample plan
+### 3. Run verifier (direct Terraform source)
 
 ```bash
-python main.py
+python main.py terraform
 ```
 
-Or evaluate Terraform source directly (no JSON generation step):
+Or point to a single file (sibling `.tf` files are still included):
 
 ```bash
-python main.py terraform/
-# or
 python main.py terraform/main.tf
 ```
 
-Or supply your own `terraform show -json` output:
+### 4. Optional: run with Terraform JSON plan
 
 ```bash
-terraform show -json tfplan.bin > plan.json
-python main.py plan.json
+python main.py tests/sample_plan.json
 ```
 
-### 3. Run individual scenarios
+### 5. Run tests
 
 ```bash
-python scenarios/scenario_1.py          # SSH & HTTP reachability
-python scenarios/scenario_2.py          # ALB bypass
-python scenarios/scenario_3.py          # Subnet isolation
-python scenarios/scenario_4.py          # Unrestricted egress
-python scenarios/scenario_5.py          # Post-fix verification
-```
-
-### 4. Run the test suite
-
-```bash
-pytest tests/ -v
+python -m pytest tests -v
 ```
 
 ---
 
-## Expected Output
+## Latest Verified Output (Direct `.tf` Input)
 
-```
-=================================================================
-  AWS Infrastructure Security Verifier (Z3 SMT)
-=================================================================
-  Plan: tests/sample_plan.json
-=================================================================
-
-  Resources parsed: 2 subnets, 1 security groups, 1 route tables, 2 EC2 instances, 1 ALBs, 1 S3 Buckets
-
-  SECURITY VERIFICATION RESULTS
-  ---------------------------------------------------------------
-  [SCENARIO 1] Internet->EC2 SSH          : SAT   VULNERABLE
-    counterexample: [ec2_ip_ssh=167772160]
-  [SCENARIO 1] Internet->EC2 HTTP         : SAT   VULNERABLE
-    counterexample: [ec2_ip_http=167772160]
-  [SCENARIO 2] Bypass ALB                 : SAT   VULNERABLE
-    counterexample: [bypass_ec2_ip=167772160, bypass_internet_ip=4127129600]
-  [SCENARIO 3] Subnet Isolation           : UNSAT SAFE
-  [SCENARIO 4] Unrestricted Egress        : SAT   VULNERABLE
-    counterexample: [egress_src_ip=167772160]
-  [SCENARIO 5] After Fix - SSH            : UNSAT SAFE
-  [SCENARIO 5] After Fix - Egress         : UNSAT SAFE
-  ---------------------------------------------------------------
-
-  Summary: 4 VULNERABLE  |  3 SAFE
-```
-
-Report otomatis tersimpan ke `output/main/report.txt` setiap kali `main.py` dijalankan.
-Setiap scenario juga bisa dijalankan secara individual dan menyimpan report ke folder masing-masing di `output/`.
-
----
-
-## How It Works
-
-### Formal Model
-
-IP addresses are encoded as **32-bit unsigned bit-vectors** (`z3.BitVec(32)`).
-Subnet membership is the standard bit-masking predicate:
-
-```
-ip ∈ CIDR  ⟺  (ip & mask) == network_address
-```
-
-Port ranges use **16-bit unsigned bit-vectors** with unsigned comparison (`ULE`):
-
-```
-port ∈ [from, to]  ⟺  from ≤ port ≤ to
-```
-
-### AWS Axioms
-
-| Axiom | Encoding |
-|---|---|
-| Default-deny | `BoolVal(False)` – no traffic without explicit allow |
-| Public subnet | Route table has `0.0.0.0/0 → igw-*` |
-| IGW reachability | Checked analytically as a precondition |
-
-### Scenario Summary
-
-| # | Check | Baseline | After Fix |
-|---|---|---|---|
-| 1 | Internet -> EC2 SSH (port 22) | SAT (VULNERABLE) | UNSAT (SAFE) |
-| 1 | Internet -> EC2 HTTP (port 80) | SAT (VULNERABLE) | — |
-| 2 | Direct access bypassing ALB | SAT (VULNERABLE) | — |
-| 3 | sub1 / sub2 CIDR overlap | UNSAT (SAFE) | — |
-| 4 | Unrestricted egress / exfil | SAT (VULNERABLE) | UNSAT (SAFE) |
-
-### Recommended Fixes
-
-**Scenario 1 – SSH exposure**
-```hcl
-ingress {
-  from_port   = 22
-  to_port     = 22
-  protocol    = "tcp"
-  cidr_blocks = ["10.0.0.0/16"]  # VPC CIDR only, not 0.0.0.0/0
-}
-```
-
-**Scenario 4 – Unrestricted egress**
-```hcl
-egress {
-  from_port   = 443
-  to_port     = 443
-  protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]   # HTTPS only, not all-traffic
-}
-```
-
----
-
-## Generating a Real Terraform Plan
+Run command:
 
 ```bash
-cd terraform/
-terraform init
-terraform plan -out=tfplan.bin
-terraform show -json tfplan.bin > ../tests/real_plan.json
-cd ..
-python main.py tests/real_plan.json
+python main.py terraform
 ```
 
-> **Note:** You need valid AWS credentials and an existing key pair; adjust
-> `variables.tf` accordingly.
+Observed summary:
+
+```text
+Resources parsed: 4 subnets, 4 security groups, 2 route tables,
+                  5 EC2 instances, 1 ALB, 3 S3 Buckets
+
+[SCENARIO 1] Internet->EC2 SSH          : SAT   VULNERABLE
+[SCENARIO 1] Internet->EC2 HTTP         : SAT   VULNERABLE
+[SCENARIO 2] Bypass ALB                 : SAT   VULNERABLE
+[SCENARIO 3] Subnet Isolation           : UNSAT SAFE
+[SCENARIO 4] Unrestricted Egress        : SAT   VULNERABLE
+[SCENARIO 5] After Fix - SSH            : UNSAT SAFE
+[SCENARIO 5] After Fix - Egress         : UNSAT SAFE
+
+Summary: 4 VULNERABLE | 3 SAFE
+```
+
+Report output is saved to:
+
+- `output/main/report.txt`
+
+---
+
+## Formal Modeling Notes
+
+- IPv4 addresses are modeled as 32-bit bit-vectors.
+- Subnet membership uses:
+
+```text
+(ip & mask) == network
+```
+
+- Port checks are modeled as range constraints.
+- AWS implicit behavior (default deny, route-based reachability) is encoded as
+  axioms and constraints.
+
+---
+
+## Exit Code Behavior
+
+- Exit code `0`: no vulnerability found
+- Exit code `1`: at least one scenario returned `SAT` (vulnerable)
+
+This behavior is intended for CI/CD gate integration.
 
 ---
 
@@ -223,7 +198,7 @@ python main.py tests/real_plan.json
 
 | Package | Purpose |
 |---|---|
-| `z3-solver` | Z3 SMT theorem prover (Python bindings) |
+| `z3-solver` | SMT solving engine |
 | `pytest` | Test runner |
 
 ---
