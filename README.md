@@ -6,6 +6,9 @@ running live traffic or relying on heuristics, the tool encodes network security
 properties as mathematical constraints and asks Z3 to either find a violating
 example (SAT = vulnerable) or prove none exists (UNSAT = safe).
 
+The verifier can also parse Terraform **directly from `.tf` files** (single file
+or full directory) without generating a plan JSON first.
+
 ---
 
 ## Project Structure
@@ -18,7 +21,7 @@ final_project/
 │   └── outputs.tf
 ├── parser/
 │   ├── __init__.py
-│   ├── parser.py         # Load & parse terraform plan JSON → structured dict
+│   ├── parser.py         # Load & parse terraform JSON or .tf → structured dict
 │   └── extractor.py      # CIDR conversion, rule extraction helpers
 ├── z3_engine/
 │   ├── __init__.py
@@ -72,6 +75,14 @@ pip install -r requirements.txt
 
 ```bash
 python main.py
+```
+
+Or evaluate Terraform source directly (no JSON generation step):
+
+```bash
+python main.py terraform/
+# or
+python main.py terraform/main.tf
 ```
 
 Or supply your own `terraform show -json` output:

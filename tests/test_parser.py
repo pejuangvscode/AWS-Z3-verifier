@@ -24,6 +24,9 @@ from parser.parser import load_and_parse, parse_infrastructure
 
 # ── Path to the bundled sample plan ──────────────────────────────────────────
 SAMPLE_PLAN_PATH = os.path.join(os.path.dirname(__file__), "sample_plan.json")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+TERRAFORM_DIR = os.path.join(PROJECT_ROOT, "terraform")
+TERRAFORM_MAIN_TF = os.path.join(TERRAFORM_DIR, "main.tf")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -252,3 +255,35 @@ class TestParseInfrastructure:
         infra = parse_infrastructure({})
         assert infra["vpc"] is None
         assert infra["subnets"] == []
+
+
+class TestParseTerraformSource:
+    def test_load_and_parse_from_tf_directory(self) -> None:
+        infra = load_and_parse(TERRAFORM_DIR)
+        assert infra["vpc"] is not None
+        assert len(infra["subnets"]) >= 2
+        assert len(infra["security_groups"]) >= 1
+        assert len(infra["route_tables"]) >= 1
+
+    def test_load_and_parse_from_single_tf_file(self) -> None:
+        # Single-file input should still parse sibling .tf files for references.
+        infra = load_and_parse(TERRAFORM_MAIN_TF)
+        assert infra["vpc"] is not None
+        assert len(infra["ec2_instances"]) >= 2
+
+    def test_tf_variable_default_is_resolved(self) -> None:
+        infra = load_and_parse(TERRAFORM_MAIN_TF)
+        assert infra["vpc"]["cidr_block"] == "10.0.0.0/16"
+
+    def test_igw_route_reference_resolved_to_igw_prefix(self) -> None:
+        infra = load_and_parse(TERRAFORM_DIR)
+
+        routes: list[dict] = []
+        for route_table in infra["route_tables"]:
+            routes.extend(route_table.get("route") or [])
+
+        assert any(
+            route.get("cidr_block") == "0.0.0.0/0"
+            and str(route.get("gateway_id", "")).startswith("igw-")
+            for route in routes
+        )

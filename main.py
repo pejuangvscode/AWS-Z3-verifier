@@ -2,14 +2,19 @@
 """
 main.py – AWS Infrastructure Security Verifier using Z3 SMT Solver.
 
-Run all five security scenarios against a Terraform plan JSON file and print a
-summary table showing SAT (vulnerable) or UNSAT (safe) for each check.
+Run all five security scenarios against Terraform input and print a summary
+table showing SAT (vulnerable) or UNSAT (safe) for each check.
+
+Supported inputs:
+* Terraform plan JSON (``terraform show -json`` output)
+* Terraform ``.tf`` file
+* Directory containing Terraform ``.tf`` files
 
 Usage
 -----
-    python main.py [terraform_plan.json]
+    python main.py [terraform_input]
 
-If no file path is given, the bundled ``tests/sample_plan.json`` is used so the
+If no input is given, the bundled ``tests/sample_plan.json`` is used so the
 tool runs out-of-the-box without real AWS credentials.
 """
 
@@ -50,7 +55,7 @@ def main() -> None:
     arg_parser = argparse.ArgumentParser(
         description=(
             "AWS Infrastructure Security Verifier – "
-            "uses Z3 SMT Solver to check Terraform plan JSON."
+            "uses Z3 SMT Solver to check Terraform JSON plan or .tf files."
         )
     )
     arg_parser.add_argument(
@@ -58,7 +63,7 @@ def main() -> None:
         nargs="?",
         default=str(Path(__file__).parent / "tests" / "sample_plan.json"),
         help=(
-            "Path to a 'terraform show -json' output file. "
+            "Path to Terraform input: JSON plan file, .tf file, or .tf directory. "
             "Defaults to tests/sample_plan.json."
         ),
     )
