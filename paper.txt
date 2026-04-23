@@ -1,0 +1,291 @@
+\documentclass[journal]{IAENGtran}
+
+% *** MATH PACKAGES ***
+\usepackage[cmex10]{amsmath}
+\usepackage{amssymb}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric}
+
+% *** GRAPHICS RELATED PACKAGES ***
+\usepackage{graphicx}
+
+\begin{document}
+
+\title{Network Security Analysis of Infrastructure as Code in Cloud Using Z3 SMT Solver}
+
+\author{Jennifer~Christabelle,~\IAENGmembership{01082230009},
+        Teofilus~Satria~Rada~Insani,~\IAENGmembership{01082230015},
+        Rafelixa~Reynard~Isak,~\IAENGmembership{01082230017},
+        Angga~Theo~Kekuatanta~Pasaribu,~\IAENGmembership{01082230023},
+        and~Gebrina~Augustine~Padatu,~\IAENGmembership{01082230041}%
+\thanks{Cloud Computing Course Project. Informatics Study Program, Universitas Pelita Harapan.}%
+}
+
+\maketitle
+\pagestyle{empty}
+\thispagestyle{empty}
+
+\begin{abstract}
+Infrastructure as Code (IaC) makes cloud deployments faster and more consistent, but it also means that a single network misconfiguration in Terraform gets copied to every environment automatically. Tools like Checkov and tfsec can catch common mistakes, but they check each resource on its own and miss vulnerabilities that only appear when multiple components interact. This paper proposes using formal verification with the Z3 SMT solver to analyze AWS network security from Terraform plan output. The approach works by extracting VPC, subnet, route table, and security group configurations, representing CIDR blocks as 32-bit bit-vectors and ports as integers, and building a logical model that Z3 can reason over to check end-to-end reachability and subnet isolation. We tested this on a case-study infrastructure with public and private subnets, an internet gateway, multiple security groups, EC2 instances, and an Application Load Balancer across five scenarios. Four of seven checks came back SAT, meaning vulnerable, including open SSH and HTTP access from the internet, a load balancer that could be bypassed due to a shared permissive security group, and fully unrestricted outbound traffic. The remaining three returned UNSAT, mathematically proving those properties safe within the modeled assumptions. These results show that SMT-based verification can catch relational, topology-dependent vulnerabilities that rule-based linters routinely miss, and can also be used as a regression check after fixes are applied. 
+\end{abstract}
+
+\begin{IAENGkeywords}
+Cloud Computing, AWS, Formal Verification, Infrastructure as Code, SMT Solver, Terraform, Z3.
+\end{IAENGkeywords}
+
+\IAENGpeerreviewmaketitle
+
+\section{Introduction}
+Over the past decade, the information technology industry has seen a major shift in how cloud infrastructure is managed. Manual configuration has been replaced by Infrastructure as Code (IaC), where entire infrastructure definitions including networks, servers, and access policies are written as declarative code and managed through version control systems \cite{guerriero2019adoption}. Among the various IaC tools available, HashiCorp's Terraform has become the most widely used infrastructure provisioning tool, particularly for Amazon Web Services (AWS) \cite{verdet2023exploring}. AWS is a cloud computing platform that provides infrastructure services such as virtual servers (EC2), networking (VPC), storage (S3), and other related components.
+
+\subsection{Background}
+In AWS architecture, network infrastructure is organized into Virtual Private Clouds (VPCs) that are divided into subnets as the smallest unit of network segmentation. Subnets determine whether a resource is public (accessible from the internet) or private (isolated internally), while also controlling routing paths between components. Alongside subnets, Security Group ports act as access gatekeepers at the transport layer, determining which services can accept connections from which sources. These two elements are the most critical layers of network access control in AWS: a misconfiguration in either one can open gaps that go undetected by other security layers, even when other components appear to be correctly configured on their own.
+
+This urgency becomes more apparent when subnets and ports are configured through IaC. While IaC provides advantages such as deployment consistency and environment reproducibility, it also presents a security paradox: when a subnet misconfiguration or a faulty port rule is embedded in a Terraform file, that mistake is automatically replicated across all environments from development to production every time terraform apply is executed \cite{rahman2020gang}. The Capital One incident (2019) is a clear example of how network-layer cloud misconfigurations, including overly permissive port access policies, can expose the data of over 100 million customers even though most infrastructure components appeared secure on their own.
+
+The impact of network-related IaC misconfigurations is well documented. Rahman et al. \cite{rahman2019seven} analyzed 1,726 IaC scripts and identified seven types of security smells, including invalid IP address binding, which is a configuration pattern that opens sensitive ports such as port 22 (SSH) or port 3306 (MySQL) to the entire internet (0.0.0.0/0), making servers vulnerable to brute-force attacks and unauthorized access. Their study found 21,201 occurrences of various security smells across 15,232 scripts. Verdet et al. \cite{verdet2023exploring} also confirmed that security misconfigurations are a widespread problem across 812 open-source Terraform projects on GitHub, with significant variation in the adoption of security best practices between projects.
+
+\subsection{Research Gap}
+To address IaC misconfigurations, the security community has developed static analysis tools based on rule-based linting such as Checkov, tfsec, and Terrascan. These tools work by matching configurations against a predefined set of rules \cite{chiari2022static}. However, rule-based approaches have two fundamental limitations. First, they evaluate each resource in isolation without building a semantic model of the overall infrastructure topology, so security gaps that arise from interactions between components cannot be detected. Second, this approach is reactive because it can only detect misconfiguration patterns that have already been identified and explicitly encoded in its rules.
+
+The empirical study by Hu et al. \cite{hu2023characterizing} confirms that in a direct analysis of Checkov alerts on a multinational company's Terraform repository, practitioners often did not follow up on alerts not because they did not understand them, but because of limited context and authority. This shows that rule-based alert outputs require significant contextual interpretation from humans.
+
+Lepiller et al. \cite{Lepiller2021} demonstrated that even when both the initial and final states of an infrastructure are secure, the update process itself can pass through an insecure intermediate state. This is a vulnerability called update sniping vulnerability, which completely escapes rule-based linting. This finding confirms that pattern-based approaches have a fundamental limit that cannot be overcome without formal reasoning about the semantics and relationships between infrastructure components.
+
+The research question that remains unanswered is: ``Is it possible to build an IaC security analysis system that can mathematically prove that subnet configurations and port rules in Terraform-based AWS infrastructure are free from unauthorized access vulnerabilities, or conversely find concrete counterexamples that prove a violation exists, while considering the holistic relationships across all infrastructure components?''
+
+\subsection{Proposed Approach: Formal Verification with Z3 SMT Solver}
+This paper proposes a formal verification approach using a Satisfiability Modulo Theories (SMT) Solver to verify the security of subnet and port configurations in AWS infrastructure defined through Terraform. Unlike rule-based static analysis, formal verification models the system as logic formulas and uses mathematically proven decision procedures to determine whether those formulas are satisfiable or not \cite{de2008z3}.
+
+The tool used is Z3, an SMT Solver developed by Microsoft Research \cite{de2008z3}. Z3 can handle various background theories including arithmetic, bit-vectors, and arrays, which are capabilities directly relevant for precisely modeling IP subnet ranges and port rules. The relevance of Z3 for AWS security has been demonstrated by Backes et al. \cite{backes2018semantic}, who developed ZELKOVA, an SMT-based reasoning engine that formalizes the semantics of AWS access policies into SMT formulas and is invoked millions of times daily in AWS operations. Sissodiya et al. \cite{sissodiya2025formal} also demonstrated the use of Z3 to prevent access policy misconfigurations in Kubernetes environments, while De Pascalis et al. \cite{de2020formal} developed DOML-MC, an SMT-based model checker for IaC code that uses Z3 as its verification engine.
+
+The advantage of formal verification over rule-based linting lies in its deterministic and comprehensive nature. By modeling all infrastructure components such as VPCs, Subnets, Security Groups, and EC2 Instances as a set of interconnected logical variables and constraints, Z3 can check two main security properties: subnet isolation (ensuring no IP range overlap between subnets) and port access control (ensuring no path from the internet can reach sensitive ports without authorization). If no violation is found (result: unsat), the configuration is mathematically proven safe. If a violation exists (result: sat), Z3 provides a concrete counterexample showing the specific configuration combination that triggers the violation, offering diagnostic information that is far more useful than simply stating ``rule X was violated.''
+
+\section{Methodology}
+ 
+This section describes the software architecture of the verification tool that was built, covering the input processing pipeline, mathematical modeling, and the testing scenarios that were applied. The research flow can be seen in Fig.~\ref{fig:flow}.
+ 
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=1.2cm]
+\tikzset{
+  box/.style={rectangle, rounded corners=5pt, draw=black,
+    minimum width=3cm, minimum height=0.7cm, text centered, font=\scriptsize},
+  arrow/.style={-{Stealth[length=4pt]}, thick}
+}
+ 
+\node[box] (input) {Input};
+\node[box, right=1.2cm of input] (ekstraksi) {Parsing \& Extraction};
+\node[box, below=1.2cm of ekstraksi] (transformasi) {Transformation};
+\node[box, below=1.2cm of transformasi] (constraint) {\shortstack{Z3 Constraint\\Formulation}};
+\node[box, below=1.2cm of constraint] (verifikasi) {Z3 Verification};
+\node[box, left=1.2cm of verifikasi] (output) {Output};
+ 
+\draw[arrow] (input) -- (ekstraksi);
+\draw[arrow] (ekstraksi) -- (transformasi);
+\draw[arrow] (transformasi) -- (constraint);
+\draw[arrow] (constraint) -- (verifikasi);
+\draw[arrow] (verifikasi) -- (output);
+ 
+\end{tikzpicture}
+\caption{Research Flow}
+\label{fig:flow}
+\end{figure}
+ 
+\subsection{Input Modes and Auto-Detection}
+ 
+The verification pipeline accepts three forms of input, and the parser module performs automatic detection of the input type at runtime:
+ 
+\begin{enumerate}
+    \item \textbf{Terraform source directory}: a directory containing one or more \texttt{.tf} files. This is the primary and recommended input mode.
+    \item \textbf{Single Terraform file}: a single \texttt{.tf} file. When this mode is detected, the parser automatically loads all sibling \texttt{.tf} files in the same directory so that the complete infrastructure definition is available during extraction.
+    \item \textbf{Terraform plan JSON}: a \texttt{.json} file conforming to the Terraform plan output schema. This mode is retained for backward compatibility but is not required for the main verification workflow.
+\end{enumerate}
+ 
+If the input path points to a directory or a file with the \texttt{.tf} extension, the parser invokes the Terraform source reader. If the input path has a \texttt{.json} extension, the parser delegates to the JSON plan reader instead. This auto-detection mechanism allows users to choose the most convenient entry point without modifying the tool's internal logic.
+ 
+\subsection{Extraction and Parsing Architecture}
+ 
+\subsubsection{Direct Terraform Source Parsing}
+ 
+In the primary input mode, the parser reads Terraform source code (\texttt{.tf} files) directly without requiring the user to generate a JSON plan via \texttt{terraform plan -json}. To produce deterministic parameter values suitable for SMT analysis, the parser implements two resolution mechanisms:
+ 
+\begin{itemize}
+    \item \textbf{Variable default resolution}: variables declared with \texttt{default} values (e.g., \texttt{var.cidr}) are resolved to their declared defaults. This ensures that CIDR blocks, port numbers, and other parameterized values are available as concrete strings at parse time.
+    \item \textbf{Resource reference resolution}: cross-resource references such as \texttt{aws\_internet\_gateway.igw.id} or \texttt{aws\_vpc.myvpc.id} are resolved into deterministic placeholder values. This preserves the referential relationships between infrastructure components while providing concrete identifiers that the downstream constraint generator can process.
+\end{itemize}
+ 
+The Terraform source parser operates in two modes depending on the availability of external dependencies. If the \texttt{python-hcl2} library is installed, the parser uses it as the primary HCL parsing backend. If \texttt{python-hcl2} is not available, the parser falls back to a built-in parser that extracts resource blocks and attribute values directly from the source text. This dual-mode design ensures that the tool remains functional without mandatory external dependencies \cite{Lepiller2021}.
+ 
+\subsubsection{JSON Plan Parsing (Backward Compatibility)}
+ 
+When a JSON file is provided as input, the parser reads the Terraform plan output structure in which all variable references have already been evaluated by Terraform's internal engine. In this mode, pointer variables such as \texttt{aws\_vpc.myvpc.id} have already been substituted with their actual values (e.g., \texttt{vpc-0abc123}), and parameterized expressions such as \texttt{var.cidr} have been expanded to their concrete values (e.g., \texttt{10.0.0.0/16}). This path remains available for users who prefer or require the JSON plan format but is no longer the sole or mandatory input pathway.
+ 
+\subsubsection{Resource Extraction}
+ 
+Regardless of the input mode, the parser produces a unified resource structure containing the following extracted component categories: VPCs, subnets, security groups, route tables, EC2 instances, internet gateways, Application Load Balancers (ALBs), and S3 buckets. From this unified structure, a Python-based constraint generator extracts network-security-relevant attributes including port numbers, access types, protocol specifications, and IP address ranges. These attributes are then subjected to data type transformation: IP address ranges are mapped to 32-bit Bit-Vector (BitVec) representations, and port numbers are converted to integer data types suitable for Z3 constraint formulation \cite{chiari2022static}.
+ 
+\subsection{Modeling and Security Properties}
+ 
+This section explains how AWS cloud infrastructure extracted from Terraform configurations is modeled into mathematical logic (SMT). This logic model is then verified using the Z3 solver. The mathematical approach is more definitive than text-based pattern matching, because each infrastructure component is directly translated into exact logical rules.
+ 
+\subsubsection{Bit-Vector-Based Network Data Type Modeling}
+ 
+IP addresses and network subnets (CIDR) are not stored merely as text or strings. To enable mathematical computation, IP addresses are modeled as 32-bit Bit-Vector (BitVec) data types in Z3 \cite{inbook}. With this binary format, the solver can perform bitwise operations. For example, to check whether an IP address belongs to a particular subnet, Z3 performs a bitwise AND operation between the IP and the subnet mask. The result is then compared with the network address:
+$$IP \land Mask = Network\_Address$$
+The Bit-Vector approach allows the SMT Solver to formulate CIDR ranges into binary algebra operations. This way, complex inter-network relationships such as overlaps or subnet intersection anomalies can be detected deterministically without the risk of false positives or false negatives commonly found in plain text checking.
+ 
+\subsubsection{Injection of Implicit AWS Environment Axioms}
+ 
+Cloud environments like AWS have built-in rules that are often not written directly in Terraform code. These unwritten rules (implicit axioms) must be included in the Z3 model so that the analysis results are not incorrect (false negatives). For instance, if a Security Group is created without any ingress rules, AWS automatically blocks all access (Deny All). In the Z3 logic formula, this condition is set with an initial value of False ($\bot$). Network access only changes to True ($\top$) or allowed if Z3 finds an explicit allow rule written by the user in the configuration.
+ 
+\subsubsection{Formalization of Reachability Axioms}
+ 
+To determine whether an infrastructure is secure, we must verify whether a server can be accessed from the internet. The conditions for a server to be reachable from the internet are called Reachability Axioms. The main requirement is that there must be a 0.0.0.0/0 route in the Route Table that points to an Internet Gateway (IGW). To prove this, Z3 traces the network route. Z3 checks the path from the network interface (ENI) on the EC2 instance, through the Subnet rules, to verify that the route actually reaches the IGW.
+ 
+\subsubsection{Security Property Specification and Verification}
+ 
+After all network components are converted into logic equations, Z3 tests these equations to find out whether any security gaps exist. The system is built to test two main parameters:
+\begin{itemize}
+    \item \textbf{Network Isolation}: Ensuring that no subnets have overlapping IP address ranges ($S_1 \cap S_2 = \emptyset$). Z3 is asked to find a single IP address ($x$) that belongs to two different subnets simultaneously ($(x \in S_1) \land (x \in S_2)$). If Z3 fails to find a conflicting IP (returns UNSAT or Unsatisfiable), then the subnets are safely isolated.
+    \item \textbf{Public Access}: Ensuring that servers cannot be freely accessed from the internet through port 22 (SSH). Z3 checks whether there is any combination of routes from the external internet (0.0.0.0/0) that is allowed to reach port 22 by the Security Group. If Z3 checks all possibilities and still fails to find an entry path (UNSAT status), then the server is confirmed safe from external threats targeting SSH.
+\end{itemize}
+ 
+\subsection{Testing Scenarios}
+ 
+The configuration used as a case study consists of a VPC with a two-tier topology (public and private subnets), four subnets, four security groups, two route tables, an internet gateway, five EC2 instances, one Application Load Balancer, and three S3 buckets. The verification was executed by providing the Terraform source directory directly as input. The parser extracted all resources and resolved variable defaults and cross-resource references, producing a complete infrastructure model with deterministic parameter values.
+ 
+Each scenario is translated into formal logic formulas that can be evaluated by Z3 to determine whether the dangerous condition is sat (satisfiable) or not. If Z3 returns sat, it means the condition can occur and Z3 produces a counterexample containing the concrete condition combination that proves it. If Z3 returns unsat (unsatisfiable), it means the condition mathematically cannot occur in the model that was built.
+ 
+\subsubsection{Scenario 1 (Internet Host Reachability to EC2 Through Complete Network Path)}
+ 
+This scenario verifies whether an internet host can reach an EC2 instance by tracing the entire network path, from the internet gateway, through the route table that directs 0.0.0.0/0 traffic to the IGW, into the public subnet, and finally to the ingress rules on the security group. The question posed to Z3 is whether all four conditions, namely IGW connected to VPC, route table has a default route to IGW, subnet is public, and security group allows port from all IPs, can be satisfied simultaneously to form a complete path from the internet to EC2. This scenario is tested for port 22 (SSH) and port 80 (HTTP) separately, as their security implications differ.
+ 
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.7cm,
+    box/.style={
+        rectangle,
+        draw,
+        align=center,
+        minimum width=3.5cm,
+        minimum height=0.8cm,
+        rounded corners=5pt
+    },
+    arrow/.style={-{Stealth}}
+]
+ 
+\node (internet) [box] {Internet};
+\node (igw) [box, below=of internet] {Internet Gateway};
+\node (rt) [box, below=of igw] {Route Table \\ (0.0.0.0/0 $\rightarrow$ IGW)};
+\node (subnet) [box, below=of rt] {Public Subnet};
+\node (sg) [box, below=of subnet] {Security Group \\ (Ingress Rule)};
+\node (ec2) [box, below=of sg] {EC2 Instance};
+ 
+\draw[arrow] (internet) -- (igw);
+\draw[arrow] (igw) -- (rt);
+\draw[arrow] (rt) -- (subnet);
+\draw[arrow] (subnet) -- (sg);
+\draw[arrow] (sg) -- (ec2);
+ 
+\end{tikzpicture}
+\caption{Formal Reachability Path from Internet to EC2 Instance}
+\label{fig:reachability}
+\end{figure}
+ 
+\subsubsection{Scenario 2 (Possibility of Direct Traffic to EC2 Without Passing Through Load Balancer)}
+ 
+This infrastructure is designed so that user traffic enters through the Application Load Balancer, not directly to EC2. This scenario verifies whether that design is actually enforced at the configuration level, or whether EC2 can be reached directly from the internet without passing through the Application Load Balancer at all. Verification is performed by modeling the security groups used by EC2 and the Application Load Balancer, specifically whether the EC2 security group restricts ingress only from the Application Load Balancer security group or still allows external sources. If Z3 finds that EC2 can be reached directly, then the Application Load Balancer does not function as the sole entry point as intended by the infrastructure design.
+ 
+\subsubsection{Scenario 3 (Inter-Subnet Isolation)}
+ 
+The subnets in this infrastructure are in the same VPC. This scenario verifies whether traffic between subnets can flow without restrictions or whether there is an isolation mechanism between them. The question posed to Z3 is whether a single IP address can simultaneously belong to two distinct subnets, which would indicate an overlap in the address space. If Z3 returns UNSAT, all subnets are mathematically proven to have non-overlapping CIDR ranges.
+ 
+\subsubsection{Scenario 4 (Unrestricted Data Output Path from EC2 to Internet)}
+ 
+The security group in this infrastructure configures egress rules that allow all outbound traffic to 0.0.0.0/0 for all ports and all protocols. This scenario verifies whether the combination of unrestricted egress, a public subnet, and a route table pointing to the IGW together form a path that allows data to leave EC2 to the internet without any control. This is important because in a compromise scenario, for instance if EC2 is successfully exploited, there is no mechanism at the network layer that limits what data can be sent out.
+ 
+\subsubsection{Scenario 5 (Model Verification After Configuration Fix)}
+ 
+This scenario tests whether the model remains consistent when the configuration is fixed. The SSH ingress rule is modified to only allow sources from within the VPC CIDR, and egress is restricted to only the necessary ports. Scenarios 1 and 4 are then re-run against the modified configuration, to confirm that Z3 can no longer find conditions proving that the dangerous paths still exist.
+
+\section{Results and Discussion}
+
+\subsection{Extraction and Parsing Results}
+The verified infrastructure was defined through four Terraform files with a two-tier VPC topology separating public and private subnets. It should be noted that the sample\_plan.json file used as input for the verification program was not generated by the terraform show -json command, but was manually constructed following the schema and structure of Terraform output. This was done because actual deployment to AWS requires paid credentials. Nevertheless, this approach remains valid because all variable references in the JSON, such as aws\_vpc.myvpc.id, have already been resolved to concrete values like vpc-0123456789abcdef0, meeting the input prerequisites for the parser module \cite{Lepiller2021}.
+
+The parsing results show that the infrastructure consists of four Subnets (two public: 10.0.0.0/24 and 10.0.1.0/24; two private: 10.0.2.0/24 and 10.0.3.0/24), four Security Groups (webSg, albSg, bastionSg, dbSg), two Route Tables (public pointing to IGW, private pointing to NAT Gateway), five EC2 instances, one ALB, and three S3 Buckets. All network parameters were converted into 32-bit Bit-Vector variables and then formulated as Z3 logical constraints \cite{chiari2022static}.
+
+\subsection{Scenario 1 Results: Internet Reachability to EC2}
+The reachability check from internet to EC2 returned SAT (VULNERABLE) for both port 22 (SSH) and port 80 (HTTP). The constraints evaluated by the solver were:
+\begin{equation*}
+\exists\, ip_{ec2}, ip_{src} : (ip_{ec2} \in \textstyle\bigcup_i S_i) \land (ip_{src} \in \text{CIDR}_{SG}) \land (p = p_{target})
+\end{equation*}
+where $S_i$ represents the set of IP addresses in each subnet and $\text{CIDR}_{SG}$ is the IP range allowed by the ingress rules. In this configuration, webSg opens port 22 and 80 to 0.0.0.0/0, so the constraint $ip_{src} \in \text{CIDR}_{SG}$ reduces to trivially true. Z3 produced counterexamples $ip_{ec2}^{ssh} = 167772928$ (10.0.3.0, sub4, private subnet) and $ip_{ec2}^{http} = 167772672$ (10.0.2.0, sub3, private subnet).
+
+The root cause is that webSg is shared across webserver1, webserver2, and appserver. However, appserver sits in a private subnet and should have a more restrictive Security Group. This pattern is consistent with the invalid IP address binding smell identified by Rahman et al. \cite{rahman2019seven} as one of the most common security smells in IaC scripts.
+
+\subsection{Scenario 2 Results: Application Load Balancer Bypass}
+This check also returned SAT (VULNERABLE). The model uses three constraints: $ip_{src} \notin \text{CIDR}_{VPC}$ to ensure the source comes from the internet, $ip_{ec2} \in \text{CIDR}_{VPC}$ to ensure the target is inside the VPC, and port 80 is allowed by the EC2 Security Group. Because webSg allows 0.0.0.0/0:80, the third constraint remains compatible with the first. Z3 found counterexamples $ip_{src} = 4127129600$ (245.255.0.0, public IP) and $ip_{ec2} = 167772160$ (10.0.0.0, IP within VPC), proving that an internet host can reach EC2 directly without going through the ALB.
+
+What is notable about this scenario is that no single rule in the configuration explicitly allows ALB bypass. The vulnerability arises from the combination of two things: webSg being too permissive and the fact that both ALB and EC2 use the same Security Group. If EC2 had a separate Security Group that only accepts traffic from albSg, then the constraint $ip_{src} \notin \text{CIDR}_{VPC}$ would contradict $ip_{src} \in \text{CIDR}_{VPC}$ and Z3 would return UNSAT. This kind of relational vulnerability is beyond the reach of rule-based linters that evaluate each resource separately \cite{Lepiller2021, backes2018semantic}.
+
+\subsection{Scenario 3 Results: Inter-Subnet Isolation}
+Unlike the previous two scenarios, the subnet overlap check returned UNSAT (SAFE). For a variable $x$ of type BitVec 32-bit. The two network address values (0x0A000000 for 10.0.0.0/24 and 0x0A000100 for 10.0.1.0/24) are different, so both constraints contradict each other in binary algebra. Not a single address out of the $2^{32}$ possible IP addresses can satisfy both simultaneously. All four subnets are mathematically proven to be non-overlapping \cite{inbook}, a deterministic guarantee that pattern-based approaches cannot provide.
+
+\subsection{Scenario 4 Results: Unrestricted Egress}
+The outbound traffic check returned SAT (VULNERABLE). The egress rule on webSg is declared with protocol = -1 (all protocols) and destination 0.0.0.0/0, so the egress permissibility constraint reduces to BoolVal(True). Combined with the default route to IGW on the public Route Table, Z3 confirmed that traffic from $ip_{src} = 167772160$ (10.0.0.0) can flow to the internet without any port or protocol restrictions. If any EC2 instance is compromised, this condition creates a completely open data exfiltration channel \cite{rahman2020gang}.
+
+\subsection{Scenario 5 Results: Post-Fix Configuration Verification}
+It should be emphasized that Scenario 5 does not read its configuration from sample\_plan.json like the previous scenarios. The fix configuration is hardcoded in the FIXED\_EC2\_SG structure within the scenarios/scenario\_5.py module, with the SSH ingress rule restricted to 10.0.0.0/16 (VPC CIDR) and egress restricted to TCP/443 only.
+
+Both re-checks returned UNSAT (SAFE). For SSH, the constraint $ip_{src} \notin \text{10.0.0.0/16}$ (attacker from internet) directly contradicts the new rule $ip_{src} \in \text{10.0.0.0/16}$. For egress, the exploration constraint $p_{egress} \neq 443$ contradicts the new rule $p_{egress} \in [443, 443]$. The contradiction in both cases proves that the vulnerabilities found in Scenarios 1 and 4 are completely closed after the fix is applied \cite{sissodiya2025formal}.
+
+\subsection{Discussion}
+Out of seven checks performed, four returned SAT (VULNERABLE) and three returned UNSAT (SAFE). The complete summary is presented in Table~\ref{tab:verification-results}.
+
+\begin{table}[htbp]
+\caption{Z3 Verification Results Summary}
+\label{tab:verification-results}
+\centering
+\footnotesize
+\begin{tabular}{|c|l|c|c|}
+\hline
+\textbf{No.} & \textbf{Check} & \textbf{Result} & \textbf{Verdict} \\
+\hline
+1a & Internet - EC2 SSH & SAT & VULNERABLE \\
+1b & Internet - EC2 HTTP & SAT & VULNERABLE \\
+2 & Bypass ALB & SAT & VULNERABLE \\
+3 & Subnet Isolation & UNSAT & SAFE \\
+4 & Unrestricted Egress & SAT & VULNERABLE \\
+5a & Post-Fix: SSH & UNSAT & SAFE \\
+5b & Post-Fix: Egress & UNSAT & SAFE \\
+\hline
+\end{tabular}
+\end{table}
+
+These results show several advantages of the formal verification approach compared to rule-based linters like Checkov and tfsec. Rule-based tools evaluate each resource in isolation, so vulnerabilities that emerge from interactions between components go undetected \cite{chiari2022static, hu2023characterizing}. Scenario 2 is the clearest example: individually, every rule in webSg looks reasonable, but its combination with shared use between ALB and EC2 creates a bypass vulnerability. Additionally, counterexamples in the form of concrete IP addresses, such as 245.255.0.0 to 10.0.0.0 in Scenario 2, are far more informative than a generic alert like ``port 80 is open to the world.'' On the other hand, UNSAT results like those in Scenarios 3 and 5 provide a mathematical guarantee that a security property holds for all possible inputs, something that pattern matching fundamentally cannot provide \cite{backes2018semantic}.
+
+Two findings are worth highlighting. The use of the same Security Group between ALB and EC2 (Scenario 2) is a misconfiguration that is easy to miss during manual review. Similarly, overly open egress rules (Scenario 4) are often deprioritized but become critical if an instance is compromised. Scenario 5 also shows that this tool can serve as a regression testing mechanism to validate the effectiveness of fixes before deployment \cite{verdet2023exploring}.
+
+There are several limitations to note. The Scenario 1 model does not enforce per-instance correlation between Security Groups, EC2, and Subnets; Z3 reports SAT as long as any single Security Group is problematic, without mapping which specific instance is affected. This is a conservative approach that prioritizes detection coverage. The verification scope is also limited to the network layer, so IAM, encryption, and S3 Bucket policies are not covered \cite{de2020formal}. Lastly, sample\_plan.json is a mock file constructed manually, not the output of an actual AWS deployment. Future work could integrate directly with Terraform output and extend the model to cover IAM policies and data encryption.
+
+\section{Conclusion}
+One of the core risks with IaC tools like Terraform is that every configuration decision gets applied uniformly across environments, which means a single network-layer mistake can quietly affect everything from development all the way to production. This study shows that formal verification with an SMT solver is a stronger and more informative approach to catching these mistakes than conventional rule-based linting. Rather than checking each resource separately, the Z3 solver builds a complete logical model of the infrastructure, covering subnet CIDR ranges, routing behavior, and security group ingress and egress rules, and then reasons about whether dangerous end-to-end paths actually exist.
+
+In the case study evaluated here, the solver found several real vulnerabilities. These included direct internet access to EC2 instances on both SSH and HTTP due to overly open ingress rules, the ability to bypass the Application Load Balancer entirely because ALB and EC2 were sharing the same permissive security group, and an unrestricted outbound path that would allow data to leave freely if any instance were compromised. On the other hand, subnet non-overlap and the post-fix revalidation both returned UNSAT, meaning Z3 mathematically confirmed, within the modeled assumptions, that those properties hold for every possible input. That kind of exhaustive guarantee is something pattern-matching tools simply cannot offer.
+
+Another practical benefit is what happens when a violation is found. Instead of a generic warning, the solver returns a concrete counterexample with specific source and destination IPs, ports, and the exact path that makes the violation possible. This makes it much easier to understand what went wrong, explain it to others, and fix it correctly. Scenario 5 also confirmed that the tool works well as a regression check. After restricting SSH ingress to the VPC CIDR and limiting egress to TCP/443, the attack conditions that previously returned SAT became UNSAT, confirming that the fixes actually worked.
+
+There are some limitations to be aware of. The current model only covers network-layer properties, so IAM policies, encryption settings, and S3 bucket policies are out of scope for now even though they matter for overall cloud security. The reachability checks are also somewhat conservative, in that Z3 flags a vulnerability if any security group is problematic without always pinpointing which specific instance is affected. On top of that, the input JSON used in this study was built manually rather than generated from a real AWS deployment. Future work should connect directly to real terraform plan -json output, improve instance-level correlation, and extend the model to cover IAM and storage policies, working toward a tool that can give comprehensive security guarantees for real, production-grade infrastructure.
+
+ 
+
+ 
+
+\bibliographystyle{BibTeXtran}
+\bibliography{ref}
+
+\end{document}
